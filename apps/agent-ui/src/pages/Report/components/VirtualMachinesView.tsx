@@ -9,6 +9,39 @@ import { VMDetailsPage } from "./VMDetailsPage";
 import { VMTable } from "./VMTable";
 import type { VMFilters } from "./vmFilters";
 
+async function updateVmMigrationExcluded(
+  agentApi: DefaultApiInterface,
+  vmIds: string[],
+  migrationExcluded: boolean,
+  onRefreshVMs?: () => void,
+): Promise<void> {
+  const results = await Promise.allSettled(
+    vmIds.map((id) =>
+      agentApi.updateVM({
+        id,
+        virtualMachineUpdateRequest: { migrationExcluded },
+      }),
+    ),
+  );
+
+  const failedIds: string[] = [];
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
+    if (result.status === "rejected") {
+      failedIds.push(vmIds[i]);
+      console.error(`Error updating VM ${vmIds[i]}:`, result.reason);
+    }
+  }
+
+  onRefreshVMs?.();
+
+  if (failedIds.length > 0) {
+    throw new Error(
+      `Failed to update ${failedIds.length} of ${vmIds.length} VM(s): ${failedIds.join(", ")}`,
+    );
+  }
+}
+
 interface VirtualMachinesViewProps {
   vms: VirtualMachine[];
   loading?: boolean;
@@ -27,6 +60,8 @@ interface VirtualMachinesViewProps {
   };
   agentApi?: DefaultApiInterface;
   onRefreshVMs?: () => void;
+  showExcludedVMs?: boolean;
+  onShowExcludedVMsChange?: (show: boolean) => void;
 }
 
 export const VirtualMachinesView: React.FC<VirtualMachinesViewProps> = ({
@@ -42,6 +77,8 @@ export const VirtualMachinesView: React.FC<VirtualMachinesViewProps> = ({
   availableFilterOptions,
   agentApi,
   onRefreshVMs,
+  showExcludedVMs,
+  onShowExcludedVMsChange,
 }) => {
   const [selectedVMId, setSelectedVMId] = useState<string | null>(null);
   const [selectedVMs, setSelectedVMs] = useState<Set<string>>(new Set());
@@ -125,6 +162,22 @@ export const VirtualMachinesView: React.FC<VirtualMachinesViewProps> = ({
       console.error("Error canceling inspection:", err);
     }
   }, [agentApi, onRefreshVMs, stopPolling]);
+
+  const handleExcludeFromReports = useCallback(
+    async (vmIds: string[]) => {
+      if (!agentApi) return;
+      await updateVmMigrationExcluded(agentApi, vmIds, true, onRefreshVMs);
+    },
+    [agentApi, onRefreshVMs],
+  );
+
+  const handleIncludeInReports = useCallback(
+    async (vmIds: string[]) => {
+      if (!agentApi) return;
+      await updateVmMigrationExcluded(agentApi, vmIds, false, onRefreshVMs);
+    },
+    [agentApi, onRefreshVMs],
+  );
 
   const handleResetInspection = useCallback(async () => {
     if (!agentApi) return;
@@ -222,6 +275,10 @@ export const VirtualMachinesView: React.FC<VirtualMachinesViewProps> = ({
         selectedVMs={selectedVMs}
         onSelectionChange={setSelectedVMs}
         onRunDeepInspection={handleRunDeepInspection}
+        onExcludeFromReports={handleExcludeFromReports}
+        onIncludeInReports={handleIncludeInReports}
+        showExcludedVMs={showExcludedVMs}
+        onShowExcludedVMsChange={onShowExcludedVMsChange}
         hasInspectionResults={hasInspectionResults || inspectionActive}
         inspectionActive={inspectionActive}
         onCancelInspection={handleCancelInspection}
