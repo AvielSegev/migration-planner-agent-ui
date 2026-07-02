@@ -19,8 +19,12 @@ export function useForecasterPolling({
   const isStartingRef = useRef(false);
   const wasRunningRef = useRef(false);
   const pairNamesRef = useRef<string[]>([]);
+  const pollEpochRef = useRef(0);
 
-  const stopPolling = useCallback(() => {
+  const stopPolling = useCallback((options?: { bumpEpoch?: boolean }) => {
+    if (options?.bumpEpoch !== false) {
+      pollEpochRef.current += 1;
+    }
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -34,14 +38,21 @@ export function useForecasterPolling({
   );
 
   const pollOnce = useCallback(async () => {
+    const epoch = pollEpochRef.current;
     const status = await getForecasterStatus(basePath);
+    if (epoch !== pollEpochRef.current) {
+      return status;
+    }
     onStatusUpdate(status);
     if (status.state === "running") {
       wasRunningRef.current = true;
     }
     if (wasRunningRef.current && status.state === "ready") {
-      stopPolling();
-      await onBenchmarkComplete(pairNamesRef.current);
+      stopPolling({ bumpEpoch: false });
+      if (epoch === pollEpochRef.current) {
+        await onBenchmarkComplete(pairNamesRef.current);
+      }
+      pollEpochRef.current += 1;
     }
     return status;
   }, [basePath, onBenchmarkComplete, onStatusUpdate, stopPolling]);
@@ -81,9 +92,13 @@ export function useForecasterPolling({
   const resumePollingIfNeeded = useCallback(
     async (pairNames: string[]) => {
       if (isPollingActive()) return null;
+      const epoch = pollEpochRef.current;
       pairNamesRef.current = pairNames;
       try {
         const status = await getForecasterStatus(basePath);
+        if (epoch !== pollEpochRef.current) {
+          return null;
+        }
         onStatusUpdate(status);
         if (status.state !== "running") {
           return status;
