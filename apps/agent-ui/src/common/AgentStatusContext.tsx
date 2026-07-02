@@ -1,6 +1,7 @@
 import { useInjection } from "@migration-planner-ui/ioc";
 import type {
   AgentStatus,
+  CollectorStatus,
   DefaultApiInterface,
 } from "@openshift-migration-advisor/agent-sdk";
 import type React from "react";
@@ -15,8 +16,10 @@ import { Symbols } from "../main/Symbols";
 
 interface AgentStatusContextValue {
   agentStatus: AgentStatus | null;
+  collectorStatus: CollectorStatus | null;
   loading: boolean;
   error: string | null;
+  hasCollectionData: boolean;
   refetch: () => Promise<void>;
 }
 
@@ -29,23 +32,37 @@ export const AgentStatusProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const agentApi = useInjection<DefaultApiInterface>(Symbols.AgentApi);
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
+  const [collectorStatus, setCollectorStatus] =
+    useState<CollectorStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const status = await agentApi.getAgentStatus();
-      setAgentStatus(status);
-    } catch (err) {
+    setLoading(true);
+    setError(null);
+
+    const [agentResult, collectorResult] = await Promise.allSettled([
+      agentApi.getAgentStatus(),
+      agentApi.getCollectorStatus(),
+    ]);
+
+    if (agentResult.status === "fulfilled") {
+      setAgentStatus(agentResult.value);
+    } else {
+      const err = agentResult.reason;
       const errorMessage =
         err instanceof Error ? err.message : "Unknown error occurred";
       console.error("Error fetching agent status:", err);
       setError(`Failed to fetch status: ${errorMessage}`);
-    } finally {
-      setLoading(false);
     }
+
+    if (collectorResult.status === "fulfilled") {
+      setCollectorStatus(collectorResult.value);
+    } else {
+      console.error("Error fetching collector status:", collectorResult.reason);
+    }
+
+    setLoading(false);
   }, [agentApi]);
 
   useEffect(() => {
@@ -54,8 +71,10 @@ export const AgentStatusProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const value: AgentStatusContextValue = {
     agentStatus,
+    collectorStatus,
     loading,
     error,
+    hasCollectionData: collectorStatus?.status === "collected",
     refetch: fetchStatus,
   };
 
