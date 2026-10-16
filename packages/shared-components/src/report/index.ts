@@ -192,7 +192,9 @@ export {
 export { ReportTable, type ReportTableProps } from "./ReportTable.js";
 export {
   type ReportExportOption,
+  type ReportExportSection,
   type StandardReportExportHandlers,
+  type StandardReportExportOptionsConfig,
   standardReportExportOptions,
 } from "./reportExportOptions.js";
 export {

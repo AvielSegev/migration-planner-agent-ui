@@ -1,5 +1,7 @@
 import {
+  Divider,
   Dropdown,
+  DropdownGroup,
   DropdownItem,
   DropdownList,
   MenuToggle,
@@ -7,12 +9,40 @@ import {
   Spinner,
 } from "@patternfly/react-core";
 import { DownloadIcon } from "@patternfly/react-icons";
-import { type FC, type Ref, useState } from "react";
+import { type FC, type ReactNode, type Ref, useMemo, useState } from "react";
 import {
   type ReportExportOption,
+  type ReportExportSection,
   type StandardReportExportHandlers,
   standardReportExportOptions,
 } from "./reportExportOptions.js";
+
+function sectionGroupKey(section?: ReportExportSection): string | undefined {
+  return section?.id;
+}
+
+function groupExportOptions(options: ReportExportOption[]): {
+  section?: ReportExportSection;
+  options: ReportExportOption[];
+}[] {
+  const groups: {
+    section?: ReportExportSection;
+    options: ReportExportOption[];
+  }[] = [];
+
+  for (const option of options) {
+    const sectionKey = sectionGroupKey(option.section);
+    const last = groups.length > 0 ? groups[groups.length - 1] : undefined;
+    const lastKey = last ? sectionGroupKey(last.section) : undefined;
+    if (last && lastKey === sectionKey) {
+      last.options.push(option);
+    } else {
+      groups.push({ section: option.section, options: [option] });
+    }
+  }
+
+  return groups;
+}
 
 export interface ReportExportMenuProps {
   options: ReportExportOption[];
@@ -31,9 +61,43 @@ export const ReportExportMenu: FC<ReportExportMenuProps> = ({
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  const optionGroups = useMemo(() => groupExportOptions(options), [options]);
+
   if (options.length === 0) {
     return null;
   }
+
+  const menuItems: ReactNode[] = [];
+  optionGroups.forEach((group, index) => {
+    if (index > 0) {
+      const dividerKey =
+        group.section?.id ?? group.options[0]?.key ?? "ungrouped";
+      menuItems.push(
+        <Divider key={`divider-before-${dividerKey}`} component="li" />,
+      );
+    }
+
+    const items = group.options.map((option) => (
+      <DropdownItem
+        key={option.key}
+        isDisabled={option.isDisabled}
+        description={option.description}
+        onClick={option.onSelect}
+      >
+        {option.label}
+      </DropdownItem>
+    ));
+
+    if (group.section) {
+      menuItems.push(
+        <DropdownGroup key={group.section.id} label={group.section.label}>
+          {items}
+        </DropdownGroup>,
+      );
+    } else {
+      menuItems.push(...items);
+    }
+  });
 
   return (
     <Dropdown
@@ -70,18 +134,7 @@ export const ReportExportMenu: FC<ReportExportMenuProps> = ({
         </MenuToggle>
       )}
     >
-      <DropdownList>
-        {options.map((option) => (
-          <DropdownItem
-            key={option.key}
-            isDisabled={option.isDisabled}
-            description={option.description}
-            onClick={option.onSelect}
-          >
-            {option.label}
-          </DropdownItem>
-        ))}
-      </DropdownList>
+      <DropdownList>{menuItems}</DropdownList>
     </Dropdown>
   );
 };
@@ -94,6 +147,7 @@ export interface ExportReportButtonProps extends StandardReportExportHandlers {
   loadingLabel?: string | null;
   isDisabled?: boolean;
   toggleLabel?: string;
+  assessmentSectionLabel?: string;
 }
 
 export const ExportReportButton: FC<ExportReportButtonProps> = ({
@@ -101,6 +155,7 @@ export const ExportReportButton: FC<ExportReportButtonProps> = ({
   onExportPng,
   onExportHtml,
   extraOptions = [],
+  assessmentSectionLabel,
   ...menuProps
 }) => (
   <ReportExportMenu
@@ -109,6 +164,7 @@ export const ExportReportButton: FC<ExportReportButtonProps> = ({
         onExportPdf,
         onExportPng,
         onExportHtml,
+        assessmentSectionLabel,
       }),
       ...extraOptions,
     ]}

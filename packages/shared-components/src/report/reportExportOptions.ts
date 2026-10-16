@@ -1,9 +1,16 @@
+export interface ReportExportSection {
+  id: string;
+  label: string;
+}
+
 export interface ReportExportOption {
   key: string;
   label: string;
   description?: string;
   onSelect: () => void;
   isDisabled?: boolean;
+  /** When set, the menu groups rows and shows `label` as the group heading. */
+  section?: ReportExportSection;
 }
 
 export interface StandardReportExportHandlers {
@@ -12,22 +19,38 @@ export interface StandardReportExportHandlers {
   onExportHtml?: () => void;
 }
 
+export type StandardReportExportOptionsConfig = StandardReportExportHandlers & {
+  /** Dropdown group label for PDF / HTML / PNG. Default: `"Assessment report"`. */
+  assessmentSectionLabel?: string;
+};
+
+const DEFAULT_ASSESSMENT_SECTION: ReportExportSection = {
+  id: "assessment-report",
+  label: "Assessment report",
+};
+
 /**
- * Standard report-download actions. Omit a handler to hide that format.
+ * Optional helper for chart-based assessment downloads. Omit a handler to hide
+ * that format. Override `assessmentSectionLabel` if product copy differs per app.
  */
 export const standardReportExportOptions = ({
   onExportPdf,
   onExportPng,
   onExportHtml,
-}: StandardReportExportHandlers): ReportExportOption[] => {
+  assessmentSectionLabel,
+}: StandardReportExportOptionsConfig): ReportExportOption[] => {
+  const section: ReportExportSection = assessmentSectionLabel
+    ? { ...DEFAULT_ASSESSMENT_SECTION, label: assessmentSectionLabel }
+    : DEFAULT_ASSESSMENT_SECTION;
+
   const options: ReportExportOption[] = [];
 
   if (onExportPdf) {
     options.push({
       key: "pdf",
       label: "PDF",
-      description: "Export the report as a PDF",
       onSelect: onExportPdf,
+      section,
     });
   }
 
@@ -35,8 +58,8 @@ export const standardReportExportOptions = ({
     options.push({
       key: "html",
       label: "HTML",
-      description: "Export the report as HTML",
       onSelect: onExportHtml,
+      section,
     });
   }
 
@@ -44,8 +67,8 @@ export const standardReportExportOptions = ({
     options.push({
       key: "png",
       label: "PNG",
-      description: "Download all charts as PNG files",
       onSelect: onExportPng,
+      section,
     });
   }
 

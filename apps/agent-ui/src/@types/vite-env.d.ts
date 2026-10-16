@@ -2,7 +2,6 @@
 
 interface ImportMetaEnv {
   readonly VITE_AGENT_BASEPATH: string;
-  // Add other env variables here
 }
 
 interface ImportMeta {
