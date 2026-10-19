@@ -1,7 +1,8 @@
-import { css } from "@emotion/css";
 import {
+  Content,
   Flex,
   FlexItem,
+  Icon,
   Stack,
   StackItem,
   Tooltip,
@@ -9,26 +10,26 @@ import {
 import {
   CheckCircleIcon,
   ExclamationCircleIcon,
-  TimesIcon,
+  TimesCircleIcon,
 } from "@patternfly/react-icons";
 import type React from "react";
-import { useCallback, useState } from "react";
-import { getAgentApiClient } from "../api/agentApiClient";
-import { unwrapInventoryPayload } from "../pages/VirtualMachinesOverview/inventoryParsing";
+import { useState } from "react";
+import { formatReportRunDate } from "../pages/ReportComparison/comparisonFormatting";
+import { useListCollectionsQuery } from "../store/api/comparisonEndpoints";
 import { DataSharingAlert } from "./components/DataSharingAlert";
 import { DataSharingModal } from "./components/DataSharingModal";
+import {
+  DATA_SHARING_ALERT_DISMISSED_KEY,
+  DATA_SHARING_ALERT_DISMISSED_VERSION,
+} from "./components/dataSharingAlertStorage";
+import { RedHatSharingStatusPopover } from "./components/RedHatSharingStatusPopover";
+import useLocalStorage from "./hooks/useLocalStorage";
 import { useAgentStatus } from "./useAgentStatus";
 
-const dangerIconStyle = css`
-  color: var(--pf-t--global--icon--color--status--danger--default);
-`;
-
-const successIconStyle = css`
-  color: var(--pf-t--global--icon--color--status--success--default);
-`;
-
 export const DiscoveryStatus: React.FC = () => {
-  const agentApi = getAgentApiClient();
+  const { data: collections } = useListCollectionsQuery();
+  const latestReportRun = collections?.[0]?.createdAt;
+
   const {
     discoverySharingStatus,
     discoverySharingError,
@@ -37,44 +38,14 @@ export const DiscoveryStatus: React.FC = () => {
     enableSharing,
   } = useAgentStatus();
 
-  const handleDownloadInventory = useCallback(async () => {
-    try {
-      const response = await agentApi.getLatestInventory({});
-      const payload = unwrapInventoryPayload(response);
-      const downloadData = payload
-        ? {
-            agentId: response.inventory?.agentId ?? "",
-            inventory: payload,
-          }
-        : response;
-
-      const jsonString = JSON.stringify(downloadData, null, 2);
-
-      const blob = new Blob([jsonString], { type: "application/json" });
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `inventory-${new Date().toISOString().split("T")[0]}.json`;
-
-      document.body.appendChild(link);
-      link.click();
-
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Error downloading inventory:", err);
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "Failed to download inventory. Please try again.";
-      alert(errorMessage);
-    }
-  }, [agentApi]);
-
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [isSharingAlertDismissed, setIsSharingAlertDismissed] = useLocalStorage(
+    DATA_SHARING_ALERT_DISMISSED_KEY,
+    false,
+    DATA_SHARING_ALERT_DISMISSED_VERSION,
+  );
 
   const handleShareClick = () => {
     setIsShareModalOpen(true);
@@ -115,7 +86,9 @@ export const DiscoveryStatus: React.FC = () => {
       <Tooltip content={discoverySharingError}>
         <Flex columnGap={{ default: "columnGapXs" }}>
           <FlexItem>
-            <ExclamationCircleIcon className={dangerIconStyle} />
+            <Icon status="danger">
+              <ExclamationCircleIcon />
+            </Icon>
           </FlexItem>
           <FlexItem>{discoverySharingStatus}</FlexItem>
         </Flex>
@@ -123,41 +96,66 @@ export const DiscoveryStatus: React.FC = () => {
     );
   } else if (discoverySharingStatus === "Sharing") {
     statusContent = (
-      <Flex columnGap={{ default: "columnGapXs" }}>
+      <Flex
+        columnGap={{ default: "columnGapXs" }}
+        alignItems={{ default: "alignItemsCenter" }}
+      >
         <FlexItem>
-          <CheckCircleIcon className={successIconStyle} />
+          <Icon status="success">
+            <CheckCircleIcon />
+          </Icon>
         </FlexItem>
         <FlexItem>{discoverySharingStatus}</FlexItem>
       </Flex>
     );
   } else {
     statusContent = (
-      <Flex columnGap={{ default: "columnGapXs" }}>
+      <Flex
+        columnGap={{ default: "columnGapXs" }}
+        alignItems={{ default: "alignItemsCenter" }}
+      >
         <FlexItem>
-          <TimesIcon />
+          <Icon status="danger">
+            <TimesCircleIcon />
+          </Icon>
         </FlexItem>
         <FlexItem>{discoverySharingStatus}</FlexItem>
+        <FlexItem>
+          <RedHatSharingStatusPopover onShare={handleShareClick} />
+        </FlexItem>
       </Flex>
     );
   }
 
+  const showSharingAlert = !isDataShared && !isSharingAlertDismissed;
+
   return (
     <>
-      <Stack hasGutter={!isDataShared}>
+      <Stack hasGutter={showSharingAlert}>
         <StackItem>
-          <Flex columnGap={{ default: "columnGapSm" }}>
+          <Flex
+            columnGap={{ default: "columnGapSm" }}
+            alignItems={{ default: "alignItemsCenter" }}
+          >
             <FlexItem>Red Hat sharing status:</FlexItem>
             <FlexItem>{statusContent}</FlexItem>
           </Flex>
         </StackItem>
-        <StackItem>
-          {!isDataShared && (
+        {latestReportRun ? (
+          <StackItem>
+            <Content component="p">
+              Latest run: {formatReportRunDate(latestReportRun)}
+            </Content>
+          </StackItem>
+        ) : null}
+        {showSharingAlert ? (
+          <StackItem>
             <DataSharingAlert
               onShare={handleShareClick}
-              onDownloadInventory={handleDownloadInventory}
+              onDismiss={() => setIsSharingAlertDismissed(true)}
             />
-          )}
-        </StackItem>
+          </StackItem>
+        ) : null}
       </Stack>
       <DataSharingModal
         isOpen={isShareModalOpen}
